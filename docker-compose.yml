@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  supabase-mcp:
+    build: .
+    container_name: supabase-mcp-server
+    restart: unless-stopped
+    environment:
+      - DEFAULT_SUPABASE_URL=${DEFAULT_SUPABASE_URL}
+      - DEFAULT_SUPABASE_ANON_KEY=${DEFAULT_SUPABASE_ANON_KEY}
+      - DEFAULT_SUPABASE_SERVICE_KEY=${DEFAULT_SUPABASE_SERVICE_KEY}
+      - DEBUG=${DEBUG:-false}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - REQUEST_TIMEOUT=${REQUEST_TIMEOUT:-30}
+    volumes:
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge 
