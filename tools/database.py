@@ -6,6 +6,7 @@ import asyncio
 from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from middleware import DynamicConfigMiddleware
+from supabase import SupabaseClient
 
 class DatabaseTools:
     """Ferramentas para operações de banco de dados"""
@@ -206,8 +207,9 @@ class DatabaseTools:
                 "x-supabase-token": access_token
             })
         
-        # Obter cliente atual
-        client = self.middleware.get_current_client()
+        # Obter config atual e criar client dinâmico
+        config = self.middleware.get_current_config()
+        client = SupabaseClient(config)
         
         if name == "database_query":
             return await self._execute_query(client, arguments)

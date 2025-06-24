@@ -7,13 +7,13 @@ from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from supabase_client import SupabaseClient
 from config import Config
+from middleware import DynamicConfigMiddleware
 
 class AuthTools:
     """Ferramentas para operações de autenticação"""
     
-    def __init__(self, config: Config):
-        self.config = config
-        self.client = SupabaseClient(config)
+    def __init__(self, middleware: DynamicConfigMiddleware):
+        self.middleware = middleware
     
     def get_tools(self) -> List[Tool]:
         """Retorna lista de ferramentas disponíveis"""
@@ -106,29 +106,43 @@ class AuthTools:
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Executa uma ferramenta específica"""
+        # Atualizar configuração se project_code e access_token foram fornecidos
+        project_code = arguments.get("project_code")
+        access_token = arguments.get("access_token")
+        
+        if project_code and access_token:
+            self.middleware.update_config_from_headers({
+                "x-supabase-project": project_code,
+                "x-supabase-token": access_token
+            })
+        
+        # Obter config atual e criar client dinâmico
+        config = self.middleware.get_current_config()
+        client = SupabaseClient(config)
+        
         if name == "auth_sign_up":
-            return await self._execute_sign_up(arguments)
+            return await self._execute_sign_up(client, arguments)
         elif name == "auth_sign_in":
-            return await self._execute_sign_in(arguments)
+            return await self._execute_sign_in(client, arguments)
         elif name == "auth_sign_out":
-            return await self._execute_sign_out(arguments)
+            return await self._execute_sign_out(client, arguments)
         elif name == "auth_get_user":
-            return await self._execute_get_user(arguments)
+            return await self._execute_get_user(client, arguments)
         elif name == "auth_reset_password":
-            return await self._execute_reset_password(arguments)
+            return await self._execute_reset_password(client, arguments)
         elif name == "auth_update_user":
-            return await self._execute_update_user(arguments)
+            return await self._execute_update_user(client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     
-    async def _execute_sign_up(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_sign_up(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Executa registro de usuário"""
         email = args["email"]
         password = args["password"]
         user_data = args.get("user_data", {})
         
         try:
-            result = await self.client.sign_up(email, password, user_data)
+            result = await client.sign_up(email, password, user_data)
             return [TextContent(
                 type="text",
                 text=f"Usuário registrado com sucesso:\n{result}"
@@ -139,13 +153,13 @@ class AuthTools:
                 text=f"Erro ao registrar usuário: {str(e)}"
             )]
     
-    async def _execute_sign_in(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_sign_in(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Executa login de usuário"""
         email = args["email"]
         password = args["password"]
         
         try:
-            result = await self.client.sign_in(email, password)
+            result = await client.sign_in(email, password)
             return [TextContent(
                 type="text",
                 text=f"Login realizado com sucesso:\n{result}"
@@ -156,10 +170,10 @@ class AuthTools:
                 text=f"Erro ao fazer login: {str(e)}"
             )]
     
-    async def _execute_sign_out(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_sign_out(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Executa logout de usuário"""
         try:
-            result = await self.client.sign_out()
+            result = await client.sign_out()
             return [TextContent(
                 type="text",
                 text="Logout realizado com sucesso"
@@ -170,10 +184,10 @@ class AuthTools:
                 text=f"Erro ao fazer logout: {str(e)}"
             )]
     
-    async def _execute_get_user(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_get_user(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Obtém informações do usuário atual"""
         try:
-            user = self.client.client.auth.get_user()
+            user = client.client.auth.get_user()
             return [TextContent(
                 type="text",
                 text=f"Usuário atual:\n{user.user.__dict__ if user.user else 'Nenhum usuário logado'}"
@@ -184,12 +198,12 @@ class AuthTools:
                 text=f"Erro ao obter usuário: {str(e)}"
             )]
     
-    async def _execute_reset_password(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_reset_password(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Solicita reset de senha"""
         email = args["email"]
         
         try:
-            self.client.client.auth.reset_password_email(email)
+            client.client.auth.reset_password_email(email)
             return [TextContent(
                 type="text",
                 text=f"Email de reset de senha enviado para {email}"
@@ -200,12 +214,12 @@ class AuthTools:
                 text=f"Erro ao solicitar reset de senha: {str(e)}"
             )]
     
-    async def _execute_update_user(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_update_user(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Atualiza dados do usuário"""
         user_data = args["user_data"]
         
         try:
-            result = self.client.client.auth.update_user(user_data)
+            result = client.client.auth.update_user(user_data)
             return [TextContent(
                 type="text",
                 text=f"Usuário atualizado com sucesso:\n{result.user.__dict__ if result.user else 'Erro na atualização'}"

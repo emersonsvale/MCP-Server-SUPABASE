@@ -8,13 +8,13 @@ from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from supabase_client import SupabaseClient
 from config import Config
+from middleware import DynamicConfigMiddleware
 
 class StorageTools:
     """Ferramentas para operações de armazenamento"""
     
-    def __init__(self, config: Config):
-        self.config = config
-        self.client = SupabaseClient(config)
+    def __init__(self, middleware: DynamicConfigMiddleware):
+        self.middleware = middleware
     
     def get_tools(self) -> List[Tool]:
         """Retorna lista de ferramentas disponíveis"""
@@ -129,22 +129,36 @@ class StorageTools:
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Executa uma ferramenta específica"""
+        # Atualizar configuração se project_code e access_token foram fornecidos
+        project_code = arguments.get("project_code")
+        access_token = arguments.get("access_token")
+        
+        if project_code and access_token:
+            self.middleware.update_config_from_headers({
+                "x-supabase-project": project_code,
+                "x-supabase-token": access_token
+            })
+        
+        # Obter config atual e criar client dinâmico
+        config = self.middleware.get_current_config()
+        client = SupabaseClient(config)
+        
         if name == "storage_upload":
-            return await self._execute_upload(arguments)
+            return await self._execute_upload(client, arguments)
         elif name == "storage_download":
-            return await self._execute_download(arguments)
+            return await self._execute_download(client, arguments)
         elif name == "storage_list_files":
-            return await self._execute_list_files(arguments)
+            return await self._execute_list_files(client, arguments)
         elif name == "storage_delete_file":
-            return await self._execute_delete_file(arguments)
+            return await self._execute_delete_file(client, arguments)
         elif name == "storage_get_url":
-            return await self._execute_get_url(arguments)
+            return await self._execute_get_url(client, arguments)
         elif name == "storage_list_buckets":
-            return await self._execute_list_buckets(arguments)
+            return await self._execute_list_buckets(client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     
-    async def _execute_upload(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_upload(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Executa upload de arquivo"""
         bucket = args["bucket"]
         path = args["path"]
@@ -155,7 +169,7 @@ class StorageTools:
             # Decodificar dados base64
             file_data = base64.b64decode(file_data_b64)
             
-            result = await self.client.upload_file(bucket, path, file_data, content_type)
+            result = await client.upload_file(bucket, path, file_data, content_type)
             return [TextContent(
                 type="text",
                 text=f"Arquivo enviado com sucesso para {bucket}/{path}"
@@ -166,13 +180,13 @@ class StorageTools:
                 text=f"Erro ao fazer upload do arquivo: {str(e)}"
             )]
     
-    async def _execute_download(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_download(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Executa download de arquivo"""
         bucket = args["bucket"]
         path = args["path"]
         
         try:
-            file_data = await self.client.download_file(bucket, path)
+            file_data = await client.download_file(bucket, path)
             file_data_b64 = base64.b64encode(file_data).decode('utf-8')
             
             return [TextContent(
@@ -185,13 +199,13 @@ class StorageTools:
                 text=f"Erro ao fazer download do arquivo: {str(e)}"
             )]
     
-    async def _execute_list_files(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_list_files(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Lista arquivos em um bucket"""
         bucket = args["bucket"]
         path = args.get("path", "")
         
         try:
-            result = self.client.client.storage.from_(bucket).list(path)
+            result = client.client.storage.from_(bucket).list(path)
             files = [item["name"] for item in result] if result else []
             
             return [TextContent(
@@ -204,13 +218,13 @@ class StorageTools:
                 text=f"Erro ao listar arquivos: {str(e)}"
             )]
     
-    async def _execute_delete_file(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_delete_file(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Deleta um arquivo"""
         bucket = args["bucket"]
         path = args["path"]
         
         try:
-            self.client.client.storage.from_(bucket).remove([path])
+            client.client.storage.from_(bucket).remove([path])
             return [TextContent(
                 type="text",
                 text=f"Arquivo {bucket}/{path} deletado com sucesso"
@@ -221,13 +235,13 @@ class StorageTools:
                 text=f"Erro ao deletar arquivo: {str(e)}"
             )]
     
-    async def _execute_get_url(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_get_url(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Obtém URL pública de um arquivo"""
         bucket = args["bucket"]
         path = args["path"]
         
         try:
-            url = self.client.client.storage.from_(bucket).get_public_url(path)
+            url = client.client.storage.from_(bucket).get_public_url(path)
             return [TextContent(
                 type="text",
                 text=f"URL pública do arquivo: {url}"
@@ -238,10 +252,10 @@ class StorageTools:
                 text=f"Erro ao obter URL do arquivo: {str(e)}"
             )]
     
-    async def _execute_list_buckets(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_list_buckets(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Lista todos os buckets"""
         try:
-            result = self.client.client.storage.list_buckets()
+            result = client.client.storage.list_buckets()
             buckets = [bucket["name"] for bucket in result] if result else []
             
             return [TextContent(

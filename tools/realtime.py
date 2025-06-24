@@ -7,13 +7,13 @@ from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from supabase_client import SupabaseClient
 from config import Config
+from middleware import DynamicConfigMiddleware
 
 class RealtimeTools:
     """Ferramentas para funcionalidades de tempo real"""
     
-    def __init__(self, config: Config):
-        self.config = config
-        self.client = SupabaseClient(config)
+    def __init__(self, middleware: DynamicConfigMiddleware):
+        self.middleware = middleware
         self.subscriptions = {}
     
     def get_tools(self) -> List[Tool]:
@@ -100,20 +100,34 @@ class RealtimeTools:
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Executa uma ferramenta específica"""
+        # Atualizar configuração se project_code e access_token foram fornecidos
+        project_code = arguments.get("project_code")
+        access_token = arguments.get("access_token")
+        
+        if project_code and access_token:
+            self.middleware.update_config_from_headers({
+                "x-supabase-project": project_code,
+                "x-supabase-token": access_token
+            })
+        
+        # Obter config atual e criar client dinâmico
+        config = self.middleware.get_current_config()
+        client = SupabaseClient(config)
+        
         if name == "realtime_subscribe":
-            return await self._execute_subscribe(arguments)
+            return await self._execute_subscribe(client, arguments)
         elif name == "realtime_unsubscribe":
-            return await self._execute_unsubscribe(arguments)
+            return await self._execute_unsubscribe(client, arguments)
         elif name == "realtime_list_subscriptions":
-            return await self._execute_list_subscriptions(arguments)
+            return await self._execute_list_subscriptions(client, arguments)
         elif name == "realtime_broadcast":
-            return await self._execute_broadcast(arguments)
+            return await self._execute_broadcast(client, arguments)
         elif name == "realtime_subscribe_channel":
-            return await self._execute_subscribe_channel(arguments)
+            return await self._execute_subscribe_channel(client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     
-    async def _execute_subscribe(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_subscribe(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Inscreve-se em mudanças de uma tabela"""
         table = args["table"]
         event = args.get("event", "*")
@@ -121,7 +135,7 @@ class RealtimeTools:
         
         try:
             # Criar subscription
-            subscription = self.client.client.table(table).on(
+            subscription = client.client.table(table).on(
                 event, 
                 callback=self._handle_table_change
             )
@@ -142,7 +156,7 @@ class RealtimeTools:
                 text=f"Erro ao criar inscrição: {str(e)}"
             )]
     
-    async def _execute_unsubscribe(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_unsubscribe(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Cancela inscrição em uma tabela"""
         table = args["table"]
         
@@ -165,7 +179,7 @@ class RealtimeTools:
                 text=f"Erro ao remover inscrição: {str(e)}"
             )]
     
-    async def _execute_list_subscriptions(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_list_subscriptions(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Lista todas as inscrições ativas"""
         try:
             tables = list(self.subscriptions.keys())
@@ -179,13 +193,13 @@ class RealtimeTools:
                 text=f"Erro ao listar inscrições: {str(e)}"
             )]
     
-    async def _execute_broadcast(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_broadcast(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Envia mensagem para um canal"""
         channel = args["channel"]
         message = args["message"]
         
         try:
-            self.client.client.channel(channel).send(message)
+            client.client.channel(channel).send(message)
             return [TextContent(
                 type="text",
                 text=f"Mensagem enviada com sucesso para o canal {channel}"
@@ -196,13 +210,13 @@ class RealtimeTools:
                 text=f"Erro ao enviar mensagem: {str(e)}"
             )]
     
-    async def _execute_subscribe_channel(self, args: Dict[str, Any]) -> List[TextContent]:
+    async def _execute_subscribe_channel(self, client: SupabaseClient, args: Dict[str, Any]) -> List[TextContent]:
         """Inscreve-se em um canal de broadcast"""
         channel = args["channel"]
         
         try:
             # Criar subscription para canal
-            subscription = self.client.client.channel(channel).on(
+            subscription = client.client.channel(channel).on(
                 "broadcast", 
                 {"event": "message"}, 
                 self._handle_channel_message
