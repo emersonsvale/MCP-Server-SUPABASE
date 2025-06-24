@@ -11,10 +11,10 @@ from config import Config
 from middleware import DynamicConfigMiddleware
 
 class StorageTools:
-    """Ferramentas para operações de armazenamento"""
-    
-    def __init__(self, middleware: DynamicConfigMiddleware):
-        self.middleware = middleware
+    """Ferramentas para operações de armazenamento (configuração fixa)"""
+    def __init__(self, config: Config, supabase_client: SupabaseClient):
+        self.config = config
+        self.client = supabase_client
     
     def get_tools(self) -> List[Tool]:
         """Retorna lista de ferramentas disponíveis"""
@@ -129,32 +129,18 @@ class StorageTools:
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Executa uma ferramenta específica"""
-        # Atualizar configuração se project_code e access_token foram fornecidos
-        project_code = arguments.get("project_code")
-        access_token = arguments.get("access_token")
-        
-        if project_code and access_token:
-            self.middleware.update_config_from_headers({
-                "x-supabase-project": project_code,
-                "x-supabase-token": access_token
-            })
-        
-        # Obter config atual e criar client dinâmico
-        config = self.middleware.get_current_config()
-        client = SupabaseClient(config)
-        
         if name == "storage_upload":
-            return await self._execute_upload(client, arguments)
+            return await self._execute_upload(self.client, arguments)
         elif name == "storage_download":
-            return await self._execute_download(client, arguments)
+            return await self._execute_download(self.client, arguments)
         elif name == "storage_list_files":
-            return await self._execute_list_files(client, arguments)
+            return await self._execute_list_files(self.client, arguments)
         elif name == "storage_delete_file":
-            return await self._execute_delete_file(client, arguments)
+            return await self._execute_delete_file(self.client, arguments)
         elif name == "storage_get_url":
-            return await self._execute_get_url(client, arguments)
+            return await self._execute_get_url(self.client, arguments)
         elif name == "storage_list_buckets":
-            return await self._execute_list_buckets(client, arguments)
+            return await self._execute_list_buckets(self.client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     

@@ -29,7 +29,7 @@ from tools.auth import AuthTools
 from tools.storage import StorageTools
 from tools.realtime import RealtimeTools
 from config import Config
-from middleware import DynamicConfigMiddleware
+from supabase_client import SupabaseClient
 
 # Configurar logging
 logging.basicConfig(
@@ -39,23 +39,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class SupabaseMCPServer:
-    """Servidor MCP para integração com Supabase com configuração dinâmica"""
+    """Servidor MCP para integração com Supabase (configuração fixa)"""
     
     def __init__(self):
         self.server = Server("supabase-mcp")
-        
-        # Configuração padrão
-        default_config = Config()
-        
-        # Middleware para configuração dinâmica
-        self.middleware = DynamicConfigMiddleware(default_config)
-        
-        # Inicializar ferramentas com middleware
-        self.database_tools = DatabaseTools(self.middleware)
-        self.auth_tools = AuthTools(self.middleware)
-        self.storage_tools = StorageTools(self.middleware)
-        self.realtime_tools = RealtimeTools(self.middleware)
-        
+        self.config = Config()
+        self.supabase_client = SupabaseClient(self.config)
+        # Inicializar ferramentas SEM middleware, apenas com config e client fixos
+        self.database_tools = DatabaseTools(self.config, self.supabase_client)
+        self.auth_tools = AuthTools(self.config, self.supabase_client)
+        self.storage_tools = StorageTools(self.config, self.supabase_client)
+        self.realtime_tools = RealtimeTools(self.config, self.supabase_client)
         self._setup_handlers()
     
     def _setup_handlers(self):
@@ -85,14 +79,6 @@ class SupabaseMCPServer:
             """Executa uma ferramenta específica com configuração dinâmica"""
             try:
                 logger.info(f"Executando ferramenta: {name} com argumentos: {arguments}")
-                
-                # Atualizar configuração baseada nos headers
-                if self.middleware.update_config_from_headers(arguments.get('headers', {})):
-                    # Recriar ferramentas com nova configuração
-                    self.database_tools = DatabaseTools(self.middleware)
-                    self.auth_tools = AuthTools(self.middleware)
-                    self.storage_tools = StorageTools(self.middleware)
-                    self.realtime_tools = RealtimeTools(self.middleware)
                 
                 # Roteamento para ferramentas de banco de dados
                 if name.startswith("database_"):

@@ -6,16 +6,16 @@ import asyncio
 from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from middleware import DynamicConfigMiddleware
-from supabase import SupabaseClient
+from supabase_client import SupabaseClient
 
 class DatabaseTools:
-    """Ferramentas para operações de banco de dados"""
-    
-    def __init__(self, middleware: DynamicConfigMiddleware):
-        self.middleware = middleware
+    """Ferramentas para operações de banco de dados (configuração fixa)"""
+    def __init__(self, config: Config, supabase_client: SupabaseClient):
+        self.config = config
+        self.client = supabase_client
     
     def get_tools(self) -> List[Tool]:
-        """Retorna lista de ferramentas disponíveis"""
+        """Retorna lista de ferramentas disponíveis (sem parâmetros dinâmicos)"""
         return [
             Tool(
                 name="database_query",
@@ -26,14 +26,6 @@ class DatabaseTools:
                         "sql": {
                             "type": "string",
                             "description": "Query SQL a ser executada"
-                        },
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
                         }
                     },
                     "required": ["sql"]
@@ -73,14 +65,6 @@ class DatabaseTools:
                         "offset": {
                             "type": "integer",
                             "description": "Offset para paginação"
-                        },
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
                         }
                     },
                     "required": ["table"]
@@ -99,14 +83,6 @@ class DatabaseTools:
                         "data": {
                             "type": "object",
                             "description": "Dados a serem inseridos"
-                        },
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
                         }
                     },
                     "required": ["table", "data"]
@@ -129,14 +105,6 @@ class DatabaseTools:
                         "data": {
                             "type": "object",
                             "description": "Dados a serem atualizados"
-                        },
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
                         }
                     },
                     "required": ["table", "id", "data"]
@@ -155,14 +123,6 @@ class DatabaseTools:
                         "id": {
                             "type": "string",
                             "description": "ID do registro"
-                        },
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
                         }
                     },
                     "required": ["table", "id"]
@@ -171,60 +131,30 @@ class DatabaseTools:
             Tool(
                 name="database_list_tables",
                 description="Lista todas as tabelas disponíveis no banco de dados",
-                inputSchema={
-                    "type": "object",
-                    "properties": {
-                        "project_code": {
-                            "type": "string",
-                            "description": "Código do projeto Supabase (opcional, pode ser enviado via header)"
-                        },
-                        "access_token": {
-                            "type": "string",
-                            "description": "Token de acesso do Supabase (opcional, pode ser enviado via header)"
-                        }
-                    }
-                }
+                inputSchema={}
             ),
             Tool(
                 name="database_get_project_info",
                 description="Obtém informações do projeto Supabase atual",
-                inputSchema={
-                    "type": "object",
-                    "properties": {}
-                }
+                inputSchema={}
             )
         ]
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-        """Executa uma ferramenta específica"""
-        # Atualizar configuração se project_code e access_token foram fornecidos
-        project_code = arguments.get("project_code")
-        access_token = arguments.get("access_token")
-        
-        if project_code and access_token:
-            self.middleware.update_config_from_headers({
-                "x-supabase-project": project_code,
-                "x-supabase-token": access_token
-            })
-        
-        # Obter config atual e criar client dinâmico
-        config = self.middleware.get_current_config()
-        client = SupabaseClient(config)
-        
         if name == "database_query":
-            return await self._execute_query(client, arguments)
+            return await self._execute_query(self.client, arguments)
         elif name == "database_select":
-            return await self._execute_select(client, arguments)
+            return await self._execute_select(self.client, arguments)
         elif name == "database_insert":
-            return await self._execute_insert(client, arguments)
+            return await self._execute_insert(self.client, arguments)
         elif name == "database_update":
-            return await self._execute_update(client, arguments)
+            return await self._execute_update(self.client, arguments)
         elif name == "database_delete":
-            return await self._execute_delete(client, arguments)
+            return await self._execute_delete(self.client, arguments)
         elif name == "database_list_tables":
-            return await self._execute_list_tables(client, arguments)
+            return await self._execute_list_tables(self.client, arguments)
         elif name == "database_get_project_info":
-            return await self._execute_get_project_info(client, arguments)
+            return await self._execute_get_project_info(self.client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     

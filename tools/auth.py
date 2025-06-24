@@ -10,10 +10,10 @@ from config import Config
 from middleware import DynamicConfigMiddleware
 
 class AuthTools:
-    """Ferramentas para operações de autenticação"""
-    
-    def __init__(self, middleware: DynamicConfigMiddleware):
-        self.middleware = middleware
+    """Ferramentas para operações de autenticação (configuração fixa)"""
+    def __init__(self, config: Config, supabase_client: SupabaseClient):
+        self.config = config
+        self.client = supabase_client
     
     def get_tools(self) -> List[Tool]:
         """Retorna lista de ferramentas disponíveis"""
@@ -106,32 +106,18 @@ class AuthTools:
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         """Executa uma ferramenta específica"""
-        # Atualizar configuração se project_code e access_token foram fornecidos
-        project_code = arguments.get("project_code")
-        access_token = arguments.get("access_token")
-        
-        if project_code and access_token:
-            self.middleware.update_config_from_headers({
-                "x-supabase-project": project_code,
-                "x-supabase-token": access_token
-            })
-        
-        # Obter config atual e criar client dinâmico
-        config = self.middleware.get_current_config()
-        client = SupabaseClient(config)
-        
         if name == "auth_sign_up":
-            return await self._execute_sign_up(client, arguments)
+            return await self._execute_sign_up(self.client, arguments)
         elif name == "auth_sign_in":
-            return await self._execute_sign_in(client, arguments)
+            return await self._execute_sign_in(self.client, arguments)
         elif name == "auth_sign_out":
-            return await self._execute_sign_out(client, arguments)
+            return await self._execute_sign_out(self.client, arguments)
         elif name == "auth_get_user":
-            return await self._execute_get_user(client, arguments)
+            return await self._execute_get_user(self.client, arguments)
         elif name == "auth_reset_password":
-            return await self._execute_reset_password(client, arguments)
+            return await self._execute_reset_password(self.client, arguments)
         elif name == "auth_update_user":
-            return await self._execute_update_user(client, arguments)
+            return await self._execute_update_user(self.client, arguments)
         else:
             raise ValueError(f"Ferramenta desconhecida: {name}")
     
