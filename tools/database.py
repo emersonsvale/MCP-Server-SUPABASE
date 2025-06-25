@@ -1,4 +1,6 @@
 """
+Implementação modularizada: as operações de banco de dados estão agora em submódulos dentro de tools/database/.
+
 Ferramentas MCP para operações de banco de dados do Supabase com configuração dinâmica
 """
 
@@ -7,6 +9,12 @@ from typing import Any, Dict, List, Optional
 from mcp.types import Tool, TextContent
 from middleware import DynamicConfigMiddleware
 from supabase_client import SupabaseClient
+from config import Config
+from tools.database.queries import execute_query
+from tools.database.inserts import execute_insert
+from tools.database.updates import execute_update
+from tools.database.deletes import execute_delete
+from tools.database.tables import execute_list_tables, execute_get_project_info
 
 class DatabaseTools:
     """Ferramentas para operações de banco de dados (configuração fixa)"""
@@ -141,152 +149,17 @@ class DatabaseTools:
         ]
     
     async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> List[TextContent]:
-        if name == "database_query":
-            return await self._execute_query(self.client, arguments)
-        elif name == "database_select":
-            return await self._execute_select(self.client, arguments)
-        elif name == "database_insert":
-            return await self._execute_insert(self.client, arguments)
-        elif name == "database_update":
-            return await self._execute_update(self.client, arguments)
-        elif name == "database_delete":
-            return await self._execute_delete(self.client, arguments)
-        elif name == "database_list_tables":
-            return await self._execute_list_tables(self.client, arguments)
-        elif name == "database_get_project_info":
-            return await self._execute_get_project_info(self.client, arguments)
-        else:
+        dispatch = {
+            "database_query": execute_query,
+            "database_select": execute_select,
+            "database_insert": execute_insert,
+            "database_update": execute_update,
+            "database_delete": execute_delete,
+            "database_list_tables": execute_list_tables,
+            "database_get_project_info": execute_get_project_info,
+        }
+        if name not in dispatch:
             raise ValueError(f"Ferramenta desconhecida: {name}")
-    
-    async def _execute_query(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Executa query SQL personalizada"""
-        sql = args["sql"]
-        try:
-            # Para queries personalizadas, usamos o cliente RPC
-            result = client.client.rpc("exec_sql", {"sql_query": sql}).execute()
-            return [TextContent(
-                type="text",
-                text=f"Query executada com sucesso. Resultado: {result.data}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao executar query: {str(e)}"
-            )]
-    
-    async def _execute_select(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Executa seleção de dados"""
-        table = args["table"]
-        columns = args.get("columns", ["*"])
-        filters = args.get("filters", [])
-        limit = args.get("limit", 100)
-        offset = args.get("offset", 0)
-        
-        try:
-            query_params = {
-                "filters": filters,
-                "limit": limit,
-                "offset": offset
-            }
-            
-            result = await client.query_table(table, query_params)
-            
-            return [TextContent(
-                type="text",
-                text=f"Consulta executada com sucesso. Encontrados {len(result)} registros:\n{result}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao consultar tabela {table}: {str(e)}"
-            )]
-    
-    async def _execute_insert(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Executa inserção de dados"""
-        table = args["table"]
-        data = args["data"]
-        
-        try:
-            result = await client.insert_record(table, data)
-            return [TextContent(
-                type="text",
-                text=f"Registro inserido com sucesso na tabela {table}:\n{result}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao inserir registro na tabela {table}: {str(e)}"
-            )]
-    
-    async def _execute_update(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Executa atualização de dados"""
-        table = args["table"]
-        record_id = args["id"]
-        data = args["data"]
-        
-        try:
-            result = await client.update_record(table, record_id, data)
-            return [TextContent(
-                type="text",
-                text=f"Registro atualizado com sucesso na tabela {table}:\n{result}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao atualizar registro na tabela {table}: {str(e)}"
-            )]
-    
-    async def _execute_delete(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Executa deleção de dados"""
-        table = args["table"]
-        record_id = args["id"]
-        
-        try:
-            result = await client.delete_record(table, record_id)
-            return [TextContent(
-                type="text",
-                text=f"Registro deletado com sucesso da tabela {table}" if result else "Registro não encontrado"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao deletar registro da tabela {table}: {str(e)}"
-            )]
-    
-    async def _execute_list_tables(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Lista todas as tabelas"""
-        try:
-            # Query para listar tabelas (PostgreSQL)
-            sql = """
-            SELECT table_name 
-            FROM information_schema.tables 
-            WHERE table_schema = 'public'
-            ORDER BY table_name;
-            """
-            result = client.client.rpc("exec_sql", {"sql_query": sql}).execute()
-            
-            tables = [row["table_name"] for row in result.data] if result.data else []
-            
-            return [TextContent(
-                type="text",
-                text=f"Tabelas disponíveis no banco de dados:\n{', '.join(tables)}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao listar tabelas: {str(e)}"
-            )]
-    
-    async def _execute_get_project_info(self, client, args: Dict[str, Any]) -> List[TextContent]:
-        """Obtém informações do projeto atual"""
-        try:
-            project_info = client.get_project_info()
-            return [TextContent(
-                type="text",
-                text=f"Informações do projeto:\n{project_info}"
-            )]
-        except Exception as e:
-            return [TextContent(
-                type="text",
-                text=f"Erro ao obter informações do projeto: {str(e)}"
-            )] 
+        return await dispatch[name](self.client, arguments)
+
+# TODO: Migrar o mesmo padrão de modularização para os módulos auth, storage e realtime para manter a consistência.

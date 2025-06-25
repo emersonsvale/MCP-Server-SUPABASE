@@ -25,5 +25,5 @@ USER mcpuser
 # Expor porta para health checks
 EXPOSE 8000
 
-# Comando para executar o servidor MCP
-CMD ["python", "main.py"] 
+# Comando para executar o servidor FastAPI
+CMD ["uvicorn", "main_fastapi:app", "--host", "0.0.0.0", "--port", "8000"] 
