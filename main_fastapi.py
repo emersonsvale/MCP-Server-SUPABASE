@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, Header, HTTPException
 from fastapi.responses import JSONResponse
 from typing import Dict, Any, List, Optional
-from tools.database import DatabaseTools
+from tools.database_tools import DatabaseTools
 from tools.auth import AuthTools
 from tools.storage import StorageTools
 from tools.realtime import RealtimeTools
